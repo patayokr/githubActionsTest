@@ -2,11 +2,10 @@ name: Node.js CI
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -14,28 +13,43 @@ jobs:
         node-version: [12.x, 14.x, 16.x]
 
     steps:
-    - uses: actions/checkout@v2
+      - name: Checkout repository
+        uses: actions/checkout@v2
 
-    - name: Execute text
-      run: npm test
+      - name: Setup Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: ${{ matrix.node-version }}
 
-    - name: if fail
-      uses: actions/github-script@0.2.0
-      with:
-        github-token: ${{github.token}}
-        script: |
-          const ref = "${{github.ref}}"
-          const pull_number = Number(ref.split("/")[2])
-          await github.pulls.createReview({
-            ...context.repo,
-            pull_number,
-            body:"테스트가 실패했습니다.",
-            event: "REQUEST_CHANGES"
-          })
-          await github.pulls.update({
-            ...context.repo,
-            pull_number,
-            state: "closed"
-          })
-      if: failure()                 
-    
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+      - name: Close PR on test failure
+        if: failure()
+        uses: actions/github-script@0.2.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const ref = context.payload.pull_request.head.ref;
+            const prNumber = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+
+            // Create a review with a request to change
+            await github.pulls.createReview({
+              owner,
+              repo,
+              pull_number: prNumber,
+              body: 'Test failed. Closing the pull request.',
+              event: 'REQUEST_CHANGES'
+            });
+
+            // Close the pull request
+            await github.pulls.update({
+              owner,
+              repo,
+              pull_number: prNumber,
+              state: 'closed'
+            });
